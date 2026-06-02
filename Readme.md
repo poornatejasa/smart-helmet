@@ -44,14 +44,3 @@ An RTOS-based intelligent helmet safety system designed to improve rider safety 
 | Control Task | Event Driven |
 
 ---
-
-## Folder Structure
-
-```text
-smart-helmet/
-│
-├── firmware/
-├── hardware/
-├── docs/
-├── images/
-└── README.md
