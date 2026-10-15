@@ -1,0 +1,22 @@
+name: smart_helmet_app
+description: "Smart Helmet companion for live safety data and device management."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  universal_ble: ^2.3.0
+  file_selector: ^1.1.0
+  crypto: ^3.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
