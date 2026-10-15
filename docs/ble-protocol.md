@@ -63,6 +63,13 @@ where `0` means success.
 | `0x03` | `command | device_name:1..20 printable bytes` |
 | `0x04` | `command` (restore telemetry defaults) |
 
+Device names always end in `Helmet`. Rename normalizes an existing suffix or
+adds ` Helmet`; the complete name stays within 20 ASCII bytes (13 for a custom
+prefix). On startup, legacy saved names are normalized; long legacy prefixes
+are shortened to fit. Reset uses `Smart Helmet`. The companion only lists
+advertised names ending in `Helmet` (case-insensitive) and still verifies the
+GATT service on connection. The suffix is a discovery filter, not authentication.
+
 ## OTA firmware transfer
 
 The client computes a SHA-256 digest of the exact firmware image before the

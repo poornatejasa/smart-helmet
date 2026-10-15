@@ -66,11 +66,8 @@ class HelmetController extends ChangeNotifier {
   int? negotiatedMtu;
 
   List<BleDevice> get devices {
-    final result = _seenDevices.values.toList();
+    final result = _seenDevices.values.where(_looksLikeHelmet).toList();
     result.sort((a, b) {
-      final aHelmet = _looksLikeHelmet(a) ? 1 : 0;
-      final bHelmet = _looksLikeHelmet(b) ? 1 : 0;
-      if (aHelmet != bHelmet) return bHelmet.compareTo(aHelmet);
       return (b.rssi ?? -1000).compareTo(a.rssi ?? -1000);
     });
     return result;
@@ -84,10 +81,7 @@ class HelmetController extends ChangeNotifier {
   String? get deviceId => _device?.deviceId;
 
   static bool _looksLikeHelmet(BleDevice device) =>
-      (device.name?.toLowerCase().startsWith('smart-helmet') ?? false) ||
-      device.services.any(
-        (uuid) => HelmetUuid.matches(uuid, HelmetUuid.telemetryService),
-      );
+      device.name?.trim().toLowerCase().endsWith('helmet') ?? false;
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -104,7 +98,7 @@ class HelmetController extends ChangeNotifier {
   }
 
   void _onScanResult(BleDevice device) {
-    if (device.name == null && device.services.isEmpty) return;
+    if (!_looksLikeHelmet(device)) return;
     _seenDevices[device.deviceId] = device;
     _notify();
   }
@@ -121,7 +115,7 @@ class HelmetController extends ChangeNotifier {
       }
       await stopScan();
       _seenDevices.clear();
-      // No OS filter: renamed helmets are still discoverable.
+      // Filter names after scanning, including names supplied in scan responses.
       await UniversalBle.startScan();
       linkState = HelmetLinkState.scanning;
       _notify();
@@ -360,6 +354,8 @@ class HelmetController extends ChangeNotifier {
     _pendingConfigCommand = null;
     _abortTransfer = true;
     activeTransfer = null;
+    telemetry = null;
+    packetsReceived = 0;
     config = null;
     otaStatus = null;
     fileStatus = null;
@@ -425,16 +421,34 @@ class HelmetController extends ChangeNotifier {
       _sendConfig(2, [2, enabled ? 1 : 0]);
 
   Future<void> setDeviceName(String name) async {
-    final trimmed = name.trim();
+    final base = helmetNameBase(name);
+    final trimmed = base.isEmpty ? 'Helmet' : '$base Helmet';
     if (trimmed.isEmpty ||
         trimmed.length > 20 ||
         !RegExp(r'^[\x20-\x7E]+$').hasMatch(trimmed)) {
-      throw const FormatException('Use 1–20 printable English characters.');
+      throw const FormatException(
+        'Use up to 13 printable English characters before Helmet.',
+      );
     }
     await _sendConfig(3, [3, ...trimmed.codeUnits]);
   }
 
   Future<void> resetSettings() => _sendConfig(4, [4]);
+
+  Future<void> refreshDevices() async {
+    if (_disposed || _connecting) return;
+    if (connected) {
+      // Read the current name without dropping the active BLE connection.
+      final characteristic = _configChar;
+      if (characteristic == null) return;
+      final value = await characteristic.read();
+      if (!connected || !identical(characteristic, _configChar)) return;
+      config = HelmetConfig.parse(value);
+      _notify();
+    } else {
+      await scan();
+    }
+  }
 
   Future<void> refresh() async {
     if (!connected) return;

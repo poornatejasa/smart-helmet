@@ -3,6 +3,12 @@ import 'dart:typed_data';
 
 import 'package:universal_ble/universal_ble.dart';
 
+String helmetNameBase(String name) => name
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim()
+    .replaceFirst(RegExp(r'helmet$', caseSensitive: false), '')
+    .replaceFirst(RegExp(r'[\s-]+$'), '');
+
 /// The UUIDs and binary layouts are shared with docs/ble-protocol.md.
 abstract final class HelmetUuid {
   static const telemetryService = 'FFF0';

@@ -3,6 +3,7 @@
 #include "helmet_ble_uuid.h"
 
 #include <string.h>
+#include <strings.h>
 
 #include "esp_log.h"
 #include "nvs.h"
@@ -20,7 +21,7 @@
 void ble_store_config_init(void);
 
 static const char *TAG = "BLE_TRANSPORT";
-static const char *DEFAULT_DEVICE_NAME = "Smart-Helmet";
+static const char *DEFAULT_DEVICE_NAME = "Smart Helmet";
 static const char *NAME_NAMESPACE = "helmet_ble";
 static const char *NAME_KEY = "device_name";
 
@@ -41,6 +42,8 @@ static int helmet_ble_store_status_cb(struct ble_store_status_event *event, void
 static connection_t *helmet_ble_find_connection(uint16_t conn_handle);
 static bool helmet_ble_add_connection(uint16_t conn_handle);
 static void helmet_ble_remove_connection(uint16_t conn_handle);
+static bool helmet_ble_normalize_name(const char *name, size_t length,
+                                      char *output, bool migrate);
 
 //------------------------ PRIVATE FUNCTIONS ------------------------
 static void helmet_ble_host_task(void *param){
@@ -78,6 +81,12 @@ static void helmet_ble_load_device_name(void){
         }
         nvs_close(handle);
     }
+    char normalized[sizeof(device_name)];
+    if (helmet_ble_normalize_name(device_name, strlen(device_name), normalized, true)) {
+        memcpy(device_name, normalized, strlen(normalized) + 1);
+    } else {
+        strcpy(device_name, DEFAULT_DEVICE_NAME);
+    }
 }
 
 static bool helmet_ble_device_name_is_valid(const char *name, size_t length){
@@ -89,6 +98,28 @@ static bool helmet_ble_device_name_is_valid(const char *name, size_t length){
         has_visible_character |= character != ' ';
     }
     return has_visible_character;
+}
+
+static bool helmet_ble_normalize_name(const char *name, size_t length,
+                                      char *output, bool migrate){
+    if (!helmet_ble_device_name_is_valid(name, length)) return false;
+    while (length > 0 && *name == ' ') { name++; length--; }
+    while (length > 0 && name[length - 1] == ' ') length--;
+    if (length >= 6 && strncasecmp(name + length - 6, "Helmet", 6) == 0) length -= 6;
+    while (length > 0 && (name[length - 1] == ' ' || name[length - 1] == '-')) length--;
+    const size_t max_base = HELMET_BLE_DEVICE_NAME_MAX_LENGTH - 7U;
+    if (length > max_base) {
+        if (!migrate) return false;
+        length = max_base;
+        while (length > 0 && name[length - 1] == ' ') length--;
+    }
+    if (length == 0) {
+        strcpy(output, "Helmet");
+    } else {
+        memcpy(output, name, length);
+        memcpy(output + length, " Helmet", 8);
+    }
+    return true;
 }
 
 static void helmet_ble_on_sync(void){
@@ -326,16 +357,18 @@ uint16_t helmet_ble_connection_handle(void){ return connection.conn_handle; }
 const char *helmet_ble_get_device_name(void){ return device_name; }
 
 esp_err_t helmet_ble_set_device_name(const char *name, size_t length){
-    if (!helmet_ble_device_name_is_valid(name, length)) return ESP_ERR_INVALID_ARG;
-    memcpy(device_name, name, length);
-    device_name[length] = '\0';
-    ble_svc_gap_device_name_set(device_name);
+    char normalized[sizeof(device_name)];
+    if (!helmet_ble_normalize_name(name, length, normalized, false)) return ESP_ERR_INVALID_ARG;
     nvs_handle_t handle;
     esp_err_t result = nvs_open(NAME_NAMESPACE, NVS_READWRITE, &handle);
     if (result != ESP_OK) return result;
-    result = nvs_set_str(handle, NAME_KEY, device_name);
+    result = nvs_set_str(handle, NAME_KEY, normalized);
     if (result == ESP_OK) result = nvs_commit(handle);
     nvs_close(handle);
+    if (result == ESP_OK) {
+        memcpy(device_name, normalized, strlen(normalized) + 1);
+        ble_svc_gap_device_name_set(device_name);
+    }
     return result;
 }
 
